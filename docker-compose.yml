@@ -1,0 +1,73 @@
+
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexashop-postgres
+    environment:
+      POSTGRES_USER: myappuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: nexashopdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myappuser -d nexashopdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MongoDB ─────────────────────────────────────
+  mongo:
+    image: mongo:7-jammy
+    container_name: nexashop-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Backend ──────────────────────────────
+  backend:
+    build:
+      context: ../nexashop-backend
+      dockerfile: Dockerfile
+    container_name: nexashop-backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://myappuser:mypassword@postgres:5432/nexashopdb
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: nexashopdb
+      SECRET_KEY: nexashop-super-secret-key-change-in-production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Angular Frontend ─────────────────────────────
+  frontend:
+    build:
+      context: ../nexashop-frontend
+      dockerfile: Dockerfile
+    container_name: nexashop-frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  mongo_data:
